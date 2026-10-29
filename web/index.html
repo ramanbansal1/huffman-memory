@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Memory strata: Huffman-compacted memory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Young+Serif&family=Familjen+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#dde7e6;--ink:#0f2233;--mut:#4d6270;--line:#0f223344;--panel:#eef3f2;--hot:#e3a008;--l0:#c9d9d4;--l1:#b3c9c0;--l2:#9ab8ad;--l3:#7ea597;--l4:#5f8f80;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0c1a1f;--ink:#e3eee9;--mut:#8fa8a8;--line:#e3eee930;--panel:#112429;--hot:#f2b632;--l0:#1b3a3a;--l1:#21463f;--l2:#2a5446;--l3:#336450;--l4:#3d745a}}
+:root[data-theme="dark"]{--bg:#0c1a1f;--ink:#e3eee9;--mut:#8fa8a8;--line:#e3eee930;--panel:#112429;--hot:#f2b632;--l0:#1b3a3a;--l1:#21463f;--l2:#2a5446;--l3:#336450;--l4:#3d745a}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.5 "Familjen Grotesk",sans-serif;
+background-image:repeating-linear-gradient(0deg,transparent 0 31px,var(--line) 31px 32px);min-height:100vh}
+h1{font:400 clamp(2rem,5vw,3.4rem)/1.05 "Young Serif",serif;margin:0 0 .5rem;letter-spacing:-.01em}
+.wrap{max-width:1080px;margin:0 auto;padding:28px 20px 60px;display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:28px}
+header{grid-column:1/-1;max-width:62ch}
+header p{margin:0;color:var(--mut)}
+.panel{background:var(--panel);border:2px solid var(--ink);padding:18px;display:flex;flex-direction:column;gap:14px;align-self:start}
+label{font-weight:700;font-size:.95rem;display:block;margin-bottom:4px}
+textarea,input[type=text]{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:2px solid var(--ink);padding:9px 10px;border-radius:0}
+textarea{resize:vertical;min-height:70px}
+button{font:700 .95rem "Familjen Grotesk",sans-serif;color:var(--bg);background:var(--ink);border:2px solid var(--ink);padding:9px 14px;cursor:pointer;border-radius:0}
+button.alt{background:transparent;color:var(--ink)}
+button:hover{background:var(--hot);color:#0f2233;border-color:var(--ink)}
+:focus-visible{outline:3px solid var(--hot);outline-offset:2px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+input[type=range]{flex:1;min-width:120px;accent-color:var(--hot)}
+.cap{font:700 1.6rem "Young Serif",serif;min-width:2ch;text-align:right}
+.results{display:flex;flex-direction:column;gap:6px;font-size:.92rem;color:var(--mut);margin:0;padding:0;list-style:none}
+.results li{border-left:4px solid var(--hot);padding-left:8px;color:var(--ink)}
+.core{position:relative;border:2px solid var(--ink);background:var(--panel);padding:0}
+.core-h{display:flex;justify-content:space-between;padding:10px 14px;border-bottom:2px solid var(--ink);font-weight:700}
+.core-h span:last-child{color:var(--mut);font-weight:500}
+.strata{display:flex;flex-direction:column;min-height:120px}
+.slab{position:relative;padding:12px 14px 12px 72px;border-bottom:1px solid var(--ink);cursor:pointer;transition:background .3s,padding .3s}
+.slab:last-child{border-bottom:0}
+.slab .k{position:absolute;left:12px;top:12px;font-variant-numeric:tabular-nums;font-weight:700;font-size:.82rem;color:var(--mut);width:52px}
+.slab .t{margin:0;font-size:.95rem}
+.slab .m{font-size:.78rem;color:var(--mut);margin-top:4px}
+.slab[data-d="0"]{background:var(--l0)}.slab[data-d="1"]{background:var(--l1)}.slab[data-d="2"]{background:var(--l2)}.slab[data-d="3"]{background:var(--l3)}.slab[data-d="4"]{background:var(--l4)}
+.slab.merged{border-left:8px solid var(--ink)}
+.slab.hit{box-shadow:inset 0 0 0 3px var(--hot)}
+.slab.fresh{animation:drop .5s cubic-bezier(.2,.8,.2,1)}
+.slab.fuse{animation:fuse .9s ease}
+@keyframes drop{from{transform:translateY(-24px);opacity:0}to{transform:none;opacity:1}}
+@keyframes fuse{0%{background:var(--hot);transform:scaleY(1.25)}100%{transform:none}}
+.kids{margin:8px 0 0;padding:0 0 0 14px;border-left:2px dashed var(--ink);font-size:.82rem;color:var(--ink);list-style:none}
+.kids li{margin:3px 0}
+.kids .kt{color:var(--mut);font-variant-numeric:tabular-nums;margin-right:6px}
+.log{font-size:.85rem;color:var(--mut);padding:10px 14px;border-top:2px solid var(--ink);min-height:44px}
+.empty{padding:26px 14px;color:var(--mut)}
+@media(max-width:820px){.wrap{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+<h1>Memory that folds itself like sediment</h1>
+<p>A store with a fixed number of slots. Each memory is keyed by its timestamp. When a new one overflows the store, the two oldest slabs fuse into one summary, the same move Huffman coding makes with its two lowest weights.</p>
+</header>
+
+<section class="panel" aria-label="Controls">
+<div>
+<label for="txt">put(memory)</label>
+<textarea id="txt" placeholder="e.g. Switched the optimizer to Sep-CMA-ES for the coordinator heads."></textarea>
+</div>
+<div class="row"><button id="put">Put memory</button><button id="sample" class="alt">Put a sample</button><button id="reset" class="alt">Reset</button></div>
+<div>
+<label for="cap">Capacity (fixed slots)</label>
+<div class="row"><input id="cap" type="range" min="2" max="8" value="5"><span class="cap" id="capv">5</span></div>
+</div>
+<div>
+<label for="q">get(query)</label>
+<div class="row"><input id="q" type="text" placeholder="optimizer" style="flex:1"><button id="get">Get</button></div>
+<label class="row" style="font-weight:400;margin:8px 0 0"><input type="checkbox" id="hist" style="accent-color:var(--hot)"> Search full history inside the tree (regex works)</label>
+<ul class="results" id="res"></ul>
+</div>
+</section>
+
+<section class="core" aria-label="Memory store">
+<div class="core-h"><span id="count">0 / 5 slots</span><span>newest on top, oldest at the bottom</span></div>
+<div class="strata" id="strata"></div>
+<div class="log" id="log" aria-live="polite">Put a memory to begin. Click a slab to open its merge tree.</div>
+</section>
+</div>
+
+<script>
+// ---- core (JS port of huffman_memory.py) ----
+const STOP=new Set("a an the and or of to in on for with is are was were be it this that at by as from i my we you your our".split());
+const toks=s=>(s.toLowerCase().match(/[a-z0-9']+/g)||[]).filter(w=>!STOP.has(w)&&w.length>2);
+const firstClause=s=>s.trim().split(/[.;\n]/)[0].trim();
+function summarize(a,b){
+  const c={};[...toks(a),...toks(b)].forEach(w=>c[w]=(c[w]||0)+1);
+  const top=Object.entries(c).sort((x,y)=>y[1]-x[1]).slice(0,4).map(e=>e[0]);
+  const o=`${firstClause(a)}; ${firstClause(b)} [${top.join(", ")}]`;
+  return o.length<=160?o:o.slice(0,159)+"…";
+}
+class HuffmanMemory{
+  constructor(cap){this.cap=cap;this.nodes=[];this.nid=1}
+  put(text,ts=Date.now()){
+    this.nodes.push({id:this.nid++,ts,text,kids:[]});
+    return this.shrink();
+  }
+  shrink(){
+    const merged=[];
+    while(this.nodes.length>this.cap&&this.nodes.length>=2){
+      this.nodes.sort((x,y)=>x.ts-y.ts);
+      const a=this.nodes.shift(),b=this.nodes.shift();           // two oldest = two lowest keys
+      const m={id:this.nid++,ts:Math.max(a.ts,b.ts),text:summarize(a.text,b.text),kids:[a,b]};
+      this.nodes.push(m);merged.push(m);
+    }
+    return merged;
+  }
+  get(query,k=3){
+    const q={};toks(query).forEach(w=>q[w]=(q[w]||0)+1);
+    if(!this.nodes.length)return[];
+    const t0=Math.min(...this.nodes.map(n=>n.ts)),t1=Math.max(...this.nodes.map(n=>n.ts));
+    const nq=Object.keys(q).length||1;
+    const sc=n=>{const t={};toks(n.text).forEach(w=>t[w]=(t[w]||0)+1);
+      let o=0;for(const w in q)o+=Math.min(q[w],t[w]||0);
+      return o/nq+0.1*((n.ts-t0)/((t1-t0)||1))};
+    return [...this.nodes].sort((a,b)=>sc(b)-sc(a)).slice(0,k);
+  }
+  leaves(n){return n.kids.length?n.kids.reduce((s,c)=>s+this.leaves(c),0):1}
+  depth(n){return n.kids.length?1+Math.max(...n.kids.map(c=>this.depth(c))):0}
+}
+
+// ---- UI ----
+const $=id=>document.getElementById(id);
+let mem=new HuffmanMemory(5),open=new Set(),hits=new Set(),fresh=null,fused=new Set();
+const SAMPLES=["User prefers concise, technically precise answers.","Training the VLA on Kaggle T4 GPUs with batch size 8.","Lab application deadline is Friday evening.","Switched the optimizer from AdamW to Sep-CMA-ES.","MobileCLIP embeddings precomputed for all robot frames.","Drone transport environment runs in PyBullet with 4 drones.","Retargeting pipeline maps stereo video to the Unitree G1.","World-model head lets the VLA skip planning for fast reactions."];
+let si=0,clock=Date.now()-SAMPLES.length*3600e3;
+const esc=s=>s.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmt=ts=>new Date(ts).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
+const kidsHTML=n=>n.kids.length?`<ul class="kids">${n.kids.map(c=>`<li><span class="kt">${fmt(c.ts)}</span>${esc(c.text)}${kidsHTML(c)}</li>`).join("")}</ul>`:"";
+
+function render(){
+  const list=[...mem.nodes].sort((a,b)=>b.ts-a.ts);           // newest on top
+  $("count").textContent=`${list.length} / ${mem.cap} slots`;
+  $("strata").innerHTML=list.length?list.map(n=>{
+    const d=Math.min(4,mem.depth(n)),L=mem.leaves(n);
+    return `<div class="slab ${n.kids.length?"merged":""} ${hits.has(n.id)?"hit":""} ${fresh===n.id?"fresh":""} ${fused.has(n.id)?"fuse":""}" data-d="${d}" data-id="${n.id}" tabindex="0" role="button" aria-expanded="${open.has(n.id)}">
+      <span class="k">${fmt(n.ts)}</span><p class="t">${esc(n.text)}</p>
+      ${n.kids.length?`<div class="m">compacted from ${L} memories (tree depth ${mem.depth(n)})</div>`:""}
+      ${open.has(n.id)?kidsHTML(n):""}</div>`}).join(""):`<div class="empty">The store is empty. Put a memory or use a sample.</div>`;
+  fresh=null;fused=new Set();
+}
+function put(text,ts){
+  if(!text.trim())return;
+  const merged=mem.put(text.trim(),ts);
+  fresh=mem.nodes.find(n=>n.text===text.trim()&&!n.kids.length)?.id||null;
+  merged.forEach(m=>{if(mem.nodes.includes(m))fused.add(m.id)});
+  hits=new Set();$("res").innerHTML="";
+  $("log").textContent=merged.length?`Overflow: fused the two oldest slabs ${merged.length>1?merged.length+" times":"once"}. Store stays at ${mem.cap} slots.`:`Stored without compaction (${mem.nodes.length} of ${mem.cap} slots used).`;
+  render();
+}
+$("put").onclick=()=>{put($("txt").value,Date.now());$("txt").value=""};
+$("sample").onclick=()=>{clock+=3600e3;put(SAMPLES[si++%SAMPLES.length],Math.min(clock,Date.now()))};
+$("reset").onclick=()=>{mem=new HuffmanMemory(+$("cap").value);open.clear();hits.clear();si=0;clock=Date.now()-SAMPLES.length*3600e3;$("res").innerHTML="";$("log").textContent="Store cleared.";render()};
+$("cap").oninput=e=>{$("capv").textContent=e.target.value;mem.cap=+e.target.value;
+  const m=mem.shrink();if(m.length)$("log").textContent=`Capacity lowered: fused the two oldest slabs ${m.length} time${m.length>1?"s":""}.`;
+  render()};
+$("get").onclick=()=>{
+  const q=$("q").value;let items;
+  if($("hist").checked&&q.trim()){
+    let re=null;try{re=new RegExp(q,"i")}catch(e){}
+    const ws=toks(q);items=[];
+    mem.nodes.forEach(root=>{const st=[root];while(st.length){const n=st.pop();st.push(...n.kids);
+      if(re?re.test(n.text):ws.some(w=>toks(n.text).includes(w)))items.push({n,root})}});
+    items.sort((a,b)=>a.n.kids.length-b.n.kids.length||b.n.ts-a.n.ts);items=items.slice(0,6);
+  }else items=mem.get(q,3).map(n=>({n,root:n}));
+  hits=new Set(items.map(x=>x.root.id));
+  $("res").innerHTML=items.length?items.map(x=>`<li>${esc(x.n.text)}${x.n!==x.root?` <em>(original, now inside the ${fmt(x.root.ts)} slab)</em>`:""}</li>`).join(""):"<li>No matches.</li>";
+  render();
+};
+$("q").onkeydown=e=>{if(e.key==="Enter")$("get").click()};
+const toggle=t=>{const s=t.target.closest(".slab");if(!s)return;const id=+s.dataset.id;open.has(id)?open.delete(id):open.add(id);render()};
+$("strata").onclick=toggle;
+$("strata").onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();toggle(e)}};
+SAMPLES.slice(0,4).forEach((s,i)=>{clock+=3600e3;mem.put(s,clock)});si=4;
+render();
+</script>
+</body>
+</html>
